@@ -1,5 +1,5 @@
-#Mountain Hacks
+# Mountain Hacks
 
 ---
 
-###Amir Matianiu, Zack Joe
+### Amir Matianiu, Zack Joe
