@@ -60,7 +60,13 @@ function getDateForCell(row: number, col: number): Date {
   return date;
 }
 
-function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
+function ConsistencyGrid({
+  workoutDates,
+  streakDates,
+}: {
+  workoutDates: Set<string>;
+  streakDates: Set<string>;
+}) {
   const grid = useMemo(() => {
     const cells: {
       row: number;
@@ -92,12 +98,14 @@ function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
           const dateStr = toDateKey(date);
           const isToday = dateStr === todayStr;
           const isFuture = date > new Date();
+          const isStreak = streakDates.has(dateStr);
           return (
             <View
               key={`${row}-${col}`}
               style={[
                 styles.cell,
                 workedOut && styles.cellActive,
+                isStreak && styles.cellStreak,
                 isToday && styles.cellToday,
                 isFuture && styles.cellFuture,
               ]}
@@ -113,6 +121,10 @@ function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
         <View style={styles.legendItem}>
           <View style={[styles.legendBox, styles.cellActive]} />
           <Text style={styles.legendText}>Workout</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBox, styles.cellStreak]} />
+          <Text style={styles.legendText}>Streak</Text>
         </View>
       </View>
     </View>
@@ -178,6 +190,16 @@ export default function App() {
     [workoutDates],
   );
   const streak = useMemo(() => getCurrentStreak(workoutDates), [workoutDates]);
+  const streakDates = useMemo(() => {
+    const dates = new Set<string>();
+    const today = new Date();
+    for (let i = 0; i < streak; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      dates.add(d.toISOString().slice(0, 10));
+    }
+    return dates;
+  }, [streak]);
   const streakMessage = useMemo(() => getStreakMessage(streak), [streak]);
   const quote = useMemo(
     () => getQuoteForState(sisyphusState, streak),
@@ -218,7 +240,7 @@ export default function App() {
         </View>
       )}
 
-      <ConsistencyGrid workoutDates={workoutDates} />
+      <ConsistencyGrid workoutDates={workoutDates} streakDates={streakDates} />
       <Text style={styles.subtitle}>
         {workoutDaysCount} workout day{workoutDaysCount !== 1 ? "s" : ""} logged
         {streak > 0 && ` · ${streak} day streak`}
@@ -306,6 +328,9 @@ const styles = StyleSheet.create({
   cellActive: {
     backgroundColor: AppColors.primary,
   },
+  cellStreak: {
+    backgroundColor: "#22c55e",
+  },
   cellToday: {
     borderWidth: 1,
     borderColor: AppColors.primaryMuted,
@@ -334,11 +359,6 @@ const styles = StyleSheet.create({
   sisyphusImage: {
     width: 200,
     height: 160,
-    marginTop: Spacing.lg,
-  },
-  demoHint: {
-    color: AppColors.textDim,
-    fontSize: 11,
     marginTop: Spacing.lg,
   },
 });
