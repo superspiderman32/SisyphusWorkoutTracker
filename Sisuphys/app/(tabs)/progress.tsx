@@ -1,151 +1,493 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Dimensions,
   StyleSheet,
   View,
-  TextInput,
   TouchableOpacity,
   Text,
   ScrollView,
+  Alert,
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
+import { useLifts } from "@/hooks/useLifts";
+import { AppColors, Spacing } from "@/constants/theme";
+import type { Lift } from "@/types/exercise";
+
+type MetricType = "maxWeight" | "volume" | "estimated1RM";
+type TimeRange = "7" | "30" | "all";
+
+function estimated1RM(weight: number, reps: number): number {
+  if (reps <= 0) return weight;
+  return Math.round(weight * (1 + reps / 30));
+}
+
+function getChartDataFromLift(
+  lift: Lift,
+  metric: MetricType,
+  timeRange: TimeRange,
+): {
+  labels: string[];
+  data: number[];
+  rawDates: string[];
+} {
+  if (!lift.entries.length) return { labels: [], data: [], rawDates: [] };
+
+  const now = Date.now();
+  const rangeMs =
+    timeRange === "7"
+      ? 7 * 24 * 60 * 60 * 1000
+      : timeRange === "30"
+        ? 30 * 24 * 60 * 60 * 1000
+        : Infinity;
+
+  const byDate = new Map<
+    string,
+    { maxWeight: number; volume: number; max1RM: number }
+  >();
+
+  for (const entry of lift.entries) {
+    const dateMs = new Date(entry.date).getTime();
+    if (now - dateMs > rangeMs) continue;
+
+    const volume = entry.weight * entry.reps * entry.sets;
+    const oneRM = estimated1RM(entry.weight, entry.reps);
+
+    const current = byDate.get(entry.date) ?? {
+      maxWeight: 0,
+      volume: 0,
+      max1RM: 0,
+    };
+
+    byDate.set(entry.date, {
+      maxWeight: Math.max(current.maxWeight, entry.weight),
+      volume: current.volume + volume,
+      max1RM: Math.max(current.max1RM, oneRM),
+    });
+  }
+
+  const sorted = [...byDate.entries()].sort(
+    (a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime(),
+  );
+
+  const labels = sorted.map(([date]) => {
+    const d = new Date(date);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  });
+  const rawDates = sorted.map(([date]) => date);
+  const data = sorted.map(([, vals]) => {
+    if (metric === "maxWeight") return vals.maxWeight;
+    if (metric === "volume") return vals.volume;
+    return vals.max1RM;
+  });
+
+  return { labels, data, rawDates };
+}
+
+function computeStats(
+  chartData: { labels: string[]; data: number[] } | null,
+  metric: MetricType,
+) {
+  if (!chartData || chartData.data.length === 0) {
+    return { pr: 0, sessions: 0, changePercent: 0 };
+  }
+  const pr = Math.max(...chartData.data);
+  const sessions = chartData.data.length;
+  const first = chartData.data[0];
+  const last = chartData.data[chartData.data.length - 1];
+  const changePercent =
+    first > 0 ? Math.round(((last - first) / first) * 100) : 0;
+  return { pr, sessions, changePercent };
+}
+
+const CHART_COLORS = {
+  gradientFrom: AppColors.chartGradientFrom,
+  gradientTo: AppColors.chartGradientTo,
+};
 
 export default function WorkoutTrend() {
-  const [weightInput, setWeightInput] = useState("");
-  const [workouts, setWorkouts] = useState([]); // Start with empty array
+  const { lifts, refresh } = useLifts();
+  const [selectedLiftId, setSelectedLiftId] = useState<number | null>(null);
+  const [metric, setMetric] = useState<MetricType>("maxWeight");
+  const [timeRange, setTimeRange] = useState<TimeRange>("all");
 
-  // 1. Load data from phone memory when app opens
-  useEffect(() => {
-    const loadData = async () => {
-      const saved = await AsyncStorage.getItem("MY_WORKOUTS");
-      if (saved) setWorkouts(JSON.parse(saved));
-    };
-    loadData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
-  const addWorkout = async () => {
-    if (!weightInput) return;
+  const selectedLift = useMemo(
+    () => lifts.find((l) => l.id === selectedLiftId) ?? lifts[0] ?? null,
+    [lifts, selectedLiftId],
+  );
 
-    const newEntry = {
-      id: Date.now(),
-      date: new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
-      weight: parseInt(weightInput),
-    };
+  const chartData = useMemo(
+    () =>
+      selectedLift
+        ? getChartDataFromLift(selectedLift, metric, timeRange)
+        : null,
+    [selectedLift, metric, timeRange],
+  );
 
-    const updatedWorkouts = [...workouts, newEntry];
-    setWorkouts(updatedWorkouts);
-    setWeightInput(""); // Clear input
+  const stats = useMemo(
+    () => computeStats(chartData, metric),
+    [chartData, metric],
+  );
 
-    await AsyncStorage.setItem("MY_WORKOUTS", JSON.stringify(updatedWorkouts));
-  };
+  const hasChartData =
+    chartData && chartData.labels.length > 0 && chartData.data.length > 0;
 
-  const clearAllData = async () => {
-    try {
-      // 1. Wipe the phone's storage for this specific key
-      await AsyncStorage.removeItem("MY_WORKOUTS");
+  const metricSuffix =
+    metric === "maxWeight" || metric === "estimated1RM" ? " kg" : "";
 
-      // 2. Reset the UI state back to an empty array
-      setWorkouts([]);
-
-      alert("Data cleared successfully!");
-    } catch (e) {
-      console.error("Failed to clear data", e);
-    }
-  };
+  const handleDataPointClick = useCallback(
+    ({ value, index }: { value: number; index: number }) => {
+      const label = chartData?.labels[index] ?? "";
+      const suffix = metric === "volume" ? "" : " kg";
+      Alert.alert(`Session ${index + 1}`, `${label}: ${value}${suffix}`);
+    },
+    [chartData, metric],
+  );
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Progress Tracker</Text>
-
-      {/* Only show chart if we have at least 2 data points */}
-      {workouts.length > 1 ? (
-        <LineChart
-          data={{
-            labels: workouts.slice(-5).map((w) => w.date), // Show last 5
-            datasets: [{ data: workouts.slice(-5).map((w) => w.weight) }],
-          }}
-          width={Dimensions.get("window").width - 32}
-          height={220}
-          chartConfig={chartConfig}
-          bezier
-          style={styles.chart}
-        />
-      ) : (
-        <View style={styles.placeholder}>
-          <Text style={{ color: "#888" }}>Add 2 entries to see trend</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {lifts.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>
+            Log exercises in Tracking to see your progress
+          </Text>
         </View>
-      )}
+      ) : (
+        <>
+          <Text style={styles.pickerLabel}>Select exercise</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.pickerScroll}
+            contentContainerStyle={styles.pickerContent}
+          >
+            {lifts.map((lift) => {
+              const isSelected = selectedLift?.id === lift.id;
+              const hasEntries = lift.entries.length > 0;
+              return (
+                <TouchableOpacity
+                  key={lift.id}
+                  style={[
+                    styles.pickerItem,
+                    isSelected && styles.pickerItemSelected,
+                    !hasEntries && styles.pickerItemDisabled,
+                  ]}
+                  onPress={() => setSelectedLiftId(lift.id)}
+                  disabled={!hasEntries}
+                >
+                  <Text
+                    style={[
+                      styles.pickerItemText,
+                      isSelected && styles.pickerItemTextSelected,
+                      !hasEntries && styles.pickerItemTextDisabled,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {lift.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Weight (lbs)"
-          placeholderTextColor="#888"
-          keyboardType="numeric"
-          value={weightInput}
-          onChangeText={setWeightInput}
-        />
-        <TouchableOpacity style={styles.button} onPress={addWorkout}>
-          <Text style={styles.buttonText}>Log Lift</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.clearButton} onPress={clearAllData}>
-          <Text style={styles.clearButtonText}>R</Text>
-        </TouchableOpacity>
-      </View>
+          {!hasChartData ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>
+                {selectedLift
+                  ? "Add entries to this exercise in Tracking to see your progress"
+                  : "Select an exercise above"}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.statsRow}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statLabel}>PR</Text>
+                  <Text style={styles.statValue}>
+                    {stats.pr}
+                    {metricSuffix}
+                  </Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statLabel}>Sessions</Text>
+                  <Text style={styles.statValue}>{stats.sessions}</Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statLabel}>Change</Text>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      stats.changePercent >= 0
+                        ? styles.statChangePositive
+                        : styles.statChangeNegative,
+                    ]}
+                  >
+                    {stats.changePercent >= 0 ? "+" : ""}
+                    {stats.changePercent}%
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Metric</Text>
+                <View style={styles.toggleGroup}>
+                  {(
+                    [
+                      ["maxWeight", "Weight"],
+                      ["volume", "Volume"],
+                      ["estimated1RM", "1RM"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <TouchableOpacity
+                      key={value}
+                      style={[
+                        styles.toggleItem,
+                        metric === value && styles.toggleItemActive,
+                      ]}
+                      onPress={() => setMetric(value)}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleItemText,
+                          metric === value && styles.toggleItemTextActive,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Range</Text>
+                <View style={styles.toggleGroup}>
+                  {(
+                    [
+                      ["7", "7 days"],
+                      ["30", "30 days"],
+                      ["all", "All time"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <TouchableOpacity
+                      key={value}
+                      style={[
+                        styles.toggleItem,
+                        timeRange === value && styles.toggleItemActive,
+                      ]}
+                      onPress={() => setTimeRange(value)}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleItemText,
+                          timeRange === value && styles.toggleItemTextActive,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={true}
+                contentContainerStyle={[
+                  styles.chartScrollContent,
+                  {
+                    backgroundColor: CHART_COLORS.gradientFrom,
+                    minWidth: Math.max(
+                      Dimensions.get("window").width - 32,
+                      (chartData?.labels.length ?? 0) * 48,
+                    ),
+                  },
+                ]}
+                style={styles.chartScroll}
+              >
+                <LineChart
+                  data={{
+                    labels: chartData!.labels,
+                    datasets: [{ data: chartData!.data }],
+                  }}
+                  width={Math.max(
+                    Dimensions.get("window").width - 32,
+                    chartData!.labels.length * 48,
+                  )}
+                  height={220}
+                  yAxisLabel=""
+                  yAxisSuffix={metricSuffix}
+                  fromZero
+                  withDots
+                  withInnerLines
+                  onDataPointClick={handleDataPointClick}
+                  chartConfig={{
+                    backgroundColor: CHART_COLORS.gradientFrom,
+                    backgroundGradientFrom: CHART_COLORS.gradientFrom,
+                    backgroundGradientTo: CHART_COLORS.gradientTo,
+                    decimalPlaces: 0,
+                    color: (opacity = 1) =>
+                      `rgba(255, 255, 255, ${opacity})`,
+                    labelColor: (opacity = 1) =>
+                      `rgba(255, 255, 255, ${opacity})`,
+                    style: { borderRadius: 16 },
+                  }}
+                  bezier
+                  style={{
+                    marginVertical: 8,
+                    borderRadius: 16,
+                  }}
+                />
+              </ScrollView>
+              <Text style={styles.tapHint}>Tap a data point to see details</Text>
+            </>
+          )}
+        </>
+      )}
     </ScrollView>
   );
 }
 
-const chartConfig = {
-  backgroundGradientFrom: "#1f1f1f",
-  backgroundGradientTo: "#1f1f1f",
-  color: (opacity = 1) => `rgba(255, 167, 38, ${opacity})`,
-  labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-  decimalPlaces: 0,
-};
-
 const styles = StyleSheet.create({
   container: {
+    paddingTop: Spacing.xxl + Spacing.lg,
     flex: 1,
-    backgroundColor: "#121212",
-    alignItems: "center",
-    paddingTop: 60,
+    backgroundColor: AppColors.background,
   },
-  title: { color: "white", fontSize: 24, fontWeight: "bold", marginBottom: 20 },
-  chart: { marginVertical: 8, borderRadius: 16 },
-  placeholder: { height: 220, justifyContent: "center" },
-  inputContainer: {
-    flexDirection: "row",
-    marginTop: 30,
-    paddingHorizontal: 20,
+  content: {
+    padding: Spacing.screenPadding,
+    paddingBottom: Spacing.xl,
   },
-  input: {
-    flex: 1,
-    backgroundColor: "#222",
-    color: "white",
-    padding: 15,
-    borderRadius: 10,
-    marginRight: 10,
-  },
-  button: {
-    backgroundColor: "#ffa726",
-    padding: 15,
-    borderRadius: 10,
-    justifyContent: "center",
-  },
-  buttonText: { fontWeight: "bold" },
-  clearButton: {
-    marginTop: 40,
-    padding: 10,
-  },
-  clearButtonText: {
-    color: "#ff4444", // Red for danger
-    fontWeight: "600",
+  pickerLabel: {
+    color: AppColors.textMuted,
     fontSize: 14,
-    textDecorationLine: "underline",
+    marginBottom: Spacing.sm,
+  },
+  pickerScroll: {
+    marginBottom: Spacing.md,
+  },
+  pickerContent: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.md,
+  },
+  pickerItem: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 8,
+    backgroundColor: AppColors.borderMuted,
+  },
+  pickerItemSelected: {
+    backgroundColor: AppColors.primary,
+  },
+  pickerItemDisabled: {
+    opacity: 0.5,
+  },
+  pickerItemText: {
+    color: AppColors.text,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  pickerItemTextSelected: {
+    color: AppColors.background,
+    fontWeight: "600",
+  },
+  pickerItemTextDisabled: {
+    color: AppColors.textDim,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: AppColors.backgroundSecondary,
+    padding: Spacing.sm,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  statLabel: {
+    color: AppColors.textMuted,
+    fontSize: 12,
+    marginBottom: Spacing.xs,
+  },
+  statValue: {
+    color: AppColors.text,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  statChangePositive: {
+    color: AppColors.success,
+  },
+  statChangeNegative: {
+    color: AppColors.error,
+  },
+  toggleRow: {
+    marginBottom: Spacing.sm,
+  },
+  toggleLabel: {
+    color: AppColors.textMuted,
+    fontSize: 14,
+    marginBottom: Spacing.sm,
+  },
+  toggleGroup: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    flexWrap: "wrap",
+  },
+  toggleItem: {
+    paddingHorizontal: 14,
+    paddingVertical: Spacing.sm,
+    borderRadius: 8,
+    backgroundColor: AppColors.borderMuted,
+  },
+  toggleItemActive: {
+    backgroundColor: AppColors.primary,
+  },
+  toggleItemText: {
+    color: AppColors.text,
+    fontSize: 14,
+  },
+  toggleItemTextActive: {
+    color: AppColors.background,
+    fontWeight: "600",
+  },
+  chartScroll: {
+    marginHorizontal: -Spacing.screenPadding,
+  },
+  chartScrollContent: {
+    paddingHorizontal: Spacing.screenPadding,
+  },
+  tapHint: {
+    color: AppColors.textDim,
+    fontSize: 12,
+    marginTop: Spacing.sm,
+    textAlign: "center",
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.lg,
+  },
+  emptyText: {
+    color: AppColors.textMuted,
+    fontSize: 16,
+    textAlign: "center",
   },
 });

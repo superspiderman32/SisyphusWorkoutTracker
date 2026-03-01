@@ -7,23 +7,9 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import { AppColors, Fonts, Spacing } from '@/constants/theme';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-
-
-type Entry = {
-  date: string;
-  weight: number;
-  reps: number;
-  sets: number;
-};
-
-type Lift = {
-  id: number;
-  name: string;
-  entries: Entry[];
-};
+import type { Entry, Lift } from '@/types/exercise';
 
 export default function TabTwoScreen() {
   const [loaded, setLoaded] = useState(false);
@@ -121,11 +107,11 @@ export default function TabTwoScreen() {
 
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
+      headerBackgroundColor={{ light: AppColors.backgroundSecondary, dark: AppColors.backgroundSecondary }}
       headerImage={
         <IconSymbol
           size={310}
-          color="#808080"
+          color={AppColors.primaryMuted}
           name="square.and.pencil"
           style={styles.headerImage}
         />
@@ -141,7 +127,7 @@ export default function TabTwoScreen() {
       <TextInput
         style={styles.input}
         placeholder="Enter exercise name..."
-        placeholderTextColor="grey"
+        placeholderTextColor={AppColors.textMuted}
         value={liftName}
         onChangeText={setLiftName}
       />
@@ -158,7 +144,7 @@ export default function TabTwoScreen() {
           >
             <ThemedText style={{ fontWeight: 'bold', fontSize: 16 }}>{lift.name}</ThemedText>
             <TouchableOpacity onPress={() => handleDeleteLift(lift.id)}>
-              <Ionicons name="trash-outline" size={20} color="red" />
+              <Ionicons name="trash-outline" size={20} color={AppColors.error} />
             </TouchableOpacity>
           </TouchableOpacity>
 
@@ -171,7 +157,7 @@ export default function TabTwoScreen() {
               ))}
 
               <TouchableOpacity style={styles.input} onPress={() => setShowDatePicker(true)}>
-                <Text style={{ color: 'white' }}>{liftDate || 'Select Date'}</Text>
+                <Text style={{ color: AppColors.text }}>{liftDate || 'Select Date'}</Text>
               </TouchableOpacity>
 
               {showDatePicker && (
@@ -190,7 +176,7 @@ export default function TabTwoScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Weight"
-                placeholderTextColor="grey"
+                placeholderTextColor={AppColors.textMuted}
                 value={liftWeight}
                 onChangeText={setLiftWeight}
                 keyboardType="numeric"
@@ -198,7 +184,7 @@ export default function TabTwoScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Reps"
-                placeholderTextColor="grey"
+                placeholderTextColor={AppColors.textMuted}
                 value={liftReps}
                 onChangeText={setLiftReps}
                 keyboardType="numeric"
@@ -206,7 +192,7 @@ export default function TabTwoScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Sets"
-                placeholderTextColor="grey"
+                placeholderTextColor={AppColors.textMuted}
                 value={liftSets}
                 onChangeText={setLiftSets}
                 keyboardType="numeric"
@@ -224,46 +210,45 @@ export default function TabTwoScreen() {
 
 const styles = StyleSheet.create({
   headerImage: {
-    color: '#808080',
     bottom: -90,
     left: -35,
     position: 'absolute',
   },
   titleContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.sm,
   },
   button: {
-    backgroundColor: '#4A90E2',
-    padding: 14,
-    borderRadius: 10,
+    backgroundColor: AppColors.primary,
+    padding: Spacing.md,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: Spacing.md,
   },
   buttonText: {
-    color: 'white',
+    color: AppColors.background,
     fontWeight: 'bold',
     fontSize: 16,
   },
   liftCard: {
-    padding: 12,
+    padding: Spacing.sm,
     borderRadius: 8,
-    marginTop: 8,
+    marginTop: Spacing.sm,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: AppColors.border,
   },
   entryRow: {
-    paddingVertical: 4,
+    paddingVertical: Spacing.xs,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: AppColors.border,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: AppColors.border,
     borderRadius: 8,
-    padding: 12,
-    marginTop: 16,
+    padding: Spacing.sm,
+    marginTop: Spacing.md,
     fontSize: 16,
-    color: 'white',
+    color: AppColors.text,
   },
 });

@@ -1,72 +1,242 @@
-import React, { useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
   View,
   StatusBar,
   TouchableOpacity,
+  ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
+import { useFocusEffect } from "@react-navigation/native";
+import { useLifts } from "@/hooks/useLifts";
+import { AppColors, Spacing } from "@/constants/theme";
+import type { Lift } from "@/types/exercise";
+
+const CELL_SIZE = 20;
+const CELL_GAP = 2;
+const WEEKS = 16;
+const ROWS = 7;
+
+function getWorkoutDates(lifts: Lift[]): Set<string> {
+  const dates = new Set<string>();
+  for (const lift of lifts) {
+    for (const entry of lift.entries) {
+      const d = new Date(entry.date);
+      if (!isNaN(d.getTime())) {
+        dates.add(d.toISOString().slice(0, 10));
+      }
+    }
+  }
+  return dates;
+}
+
+function getDateForCell(row: number, col: number): Date {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const startOfThisWeek = new Date(today);
+  startOfThisWeek.setDate(today.getDate() - dayOfWeek);
+  startOfThisWeek.setHours(0, 0, 0, 0);
+
+  const weeksAgo = WEEKS - 1 - col;
+  const startOfThatWeek = new Date(startOfThisWeek);
+  startOfThatWeek.setDate(startOfThisWeek.getDate() - weeksAgo * 7);
+
+  const date = new Date(startOfThatWeek);
+  date.setDate(startOfThatWeek.getDate() + row);
+  return date;
+}
+
+function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
+  const grid = useMemo(() => {
+    const cells: {
+      row: number;
+      col: number;
+      date: Date;
+      workedOut: boolean;
+    }[] = [];
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < WEEKS; col++) {
+        const date = getDateForCell(row, col);
+        const dateStr = date.toISOString().slice(0, 10);
+        const workedOut = workoutDates.has(dateStr);
+        cells.push({ row, col, date, workedOut });
+      }
+    }
+    return cells;
+  }, [workoutDates]);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  return (
+    <View style={styles.gridContainer}>
+      <View style={styles.grid}>
+        {grid.map(({ row, col, date, workedOut }) => {
+          const dateStr = date.toISOString().slice(0, 10);
+          const isToday = dateStr === todayStr;
+          const isFuture = date > new Date();
+          return (
+            <View
+              key={`${row}-${col}`}
+              style={[
+                styles.cell,
+                workedOut && styles.cellActive,
+                isToday && styles.cellToday,
+                isFuture && styles.cellFuture,
+              ]}
+            />
+          );
+        })}
+      </View>
+      <View style={styles.legend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBox, styles.cell]} />
+          <Text style={styles.legendText}>No workout</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBox, styles.cellActive]} />
+          <Text style={styles.legendText}>Workout</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function App() {
-  const [liftCount, setLiftCount] = useState(0);
+  const { lifts, refresh } = useLifts();
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
+
+  const workoutDates = useMemo(() => getWorkoutDates(lifts), [lifts]);
+  const workoutDaysCount = workoutDates.size;
+
   return (
-    <View style={styles.container}>
-      {/* This makes the phone's clock/battery icons white */}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
       <StatusBar barStyle="light-content" />
 
-      <Text style={styles.title}>SISUPHYS</Text>
-      <Text style={styles.subtitle}>The struggle is the reward.</Text>
-      <Text style={styles.subtitle}>Boulder lifted {liftCount} times</Text>
+      <Text style={styles.title}>Rep</Text>
 
-      <View style={styles.boulder} />
+      <Image
+        source={require("@/assets/images/sisyphus-pushing.png")}
+        style={styles.sisyphusImage}
+        contentFit="contain"
+      />
+      <Text style={styles.subtitle}>"One must imagine Sisyphus happy"</Text>
 
-      {/* Button */}
-      <TouchableOpacity
-        onPress={() => setLiftCount(liftCount + 1)}
-        style={styles.button}
-      >
-        <Text style={styles.buttonText}>Push Boulder</Text>
-      </TouchableOpacity>
-    </View>
+      <ConsistencyGrid workoutDates={workoutDates} />
+      <Text style={styles.subtitle}>
+        {workoutDaysCount} workout day{workoutDaysCount !== 1 ? "s" : ""} logged
+      </Text>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    paddingTop: 50,
     flex: 1,
-    backgroundColor: "#121212", // Dark "stone" background
+    backgroundColor: AppColors.background,
+  },
+  content: {
     alignItems: "center",
     justifyContent: "center",
+    paddingTop: Spacing.xxl + Spacing.lg,
+    paddingBottom: Spacing.xxl,
+    paddingHorizontal: Spacing.screenPadding,
   },
   title: {
-    color: "#FFFFFF",
+    marginTop: Spacing.sectionGap,
+    marginBottom: Spacing.sectionGap,
+    color: AppColors.text,
     fontSize: 42,
     fontWeight: "bold",
     letterSpacing: 5,
   },
   subtitle: {
-    color: "#888",
+    color: AppColors.textMuted,
     fontSize: 16,
     fontStyle: "italic",
-    marginTop: 10,
+    marginTop: Spacing.sm,
   },
-  boulder: {
-    width: 60,
-    height: 60,
-    backgroundColor: "#444",
-    borderRadius: 30, // Makes it a circle
-    marginTop: 50,
+  gridContainer: {
+    marginTop: Spacing.sectionGap,
+    marginBottom: Spacing.sectionGap,
+    alignItems: "center",
+  },
+  gridTitle: {
+    color: AppColors.text,
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: Spacing.xs,
+  },
+  gridSubtitle: {
+    color: AppColors.textMuted,
+    fontSize: 12,
+    marginBottom: Spacing.sm,
+  },
+  grid: {
+    marginTop: Spacing.sectionGap,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    width: WEEKS * (CELL_SIZE + CELL_GAP) - CELL_GAP,
+    gap: CELL_GAP,
+  },
+  cell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,
+    borderRadius: 2,
+    backgroundColor: AppColors.borderMuted,
+  },
+  cellActive: {
+    backgroundColor: AppColors.primary,
+  },
+  cellToday: {
+    borderWidth: 1,
+    borderColor: AppColors.primaryMuted,
+  },
+  cellFuture: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  legend: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  legendBox: {
+    width: 12,
+    height: 12,
+  },
+  legendText: {
+    color: AppColors.textMuted,
+    fontSize: 12,
+  },
+  sisyphusImage: {
+    width: 200,
+    height: 160,
+    marginTop: Spacing.lg,
   },
   button: {
-    backgroundColor: "#d33d02",
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 5,
-    marginTop: 40,
-    borderWidth: 1,
+    backgroundColor: AppColors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+    marginTop: Spacing.xxl,
   },
   buttonText: {
-    color: "#fff",
+    color: AppColors.background,
     fontWeight: "bold",
     letterSpacing: 2,
   },
