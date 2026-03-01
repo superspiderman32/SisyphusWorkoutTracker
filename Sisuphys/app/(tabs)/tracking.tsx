@@ -156,7 +156,7 @@ export default function TabTwoScreen() {
 
           {expanded === lift.id && (
             <View style={{ marginTop: 10 }}>
-              {lift.entries.map((entry, index) => (
+              {lift.entries.slice(-5).map((entry, index) => (
                 <View key={index} style={styles.entryRow}>
                   <ThemedText>{parseEntryDateToKey(entry.date) ?? entry.date} — {entry.weight}kg x {entry.reps} reps x {entry.sets} sets</ThemedText>
                 </View>
