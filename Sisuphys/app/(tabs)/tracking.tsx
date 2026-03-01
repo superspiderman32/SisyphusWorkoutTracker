@@ -71,6 +71,7 @@ export default function TabTwoScreen() {
   };
 
   const handleAddEntry = (liftId: number) => {
+    if(liftDate && liftWeight && liftReps && liftSets){
     const newEntry: Entry = {
       date: liftDate,
       weight: Number(liftWeight),
@@ -85,7 +86,7 @@ export default function TabTwoScreen() {
     setLiftDate('');
     setLiftWeight('');
     setLiftReps('');
-    setLiftSets('');
+    setLiftSets('');}
   };
 
   const handleDeleteLift = (liftId: number) => {
@@ -170,22 +171,22 @@ export default function TabTwoScreen() {
               ))}
 
               <TouchableOpacity style={styles.input} onPress={() => setShowDatePicker(true)}>
-  <Text style={{ color: 'white' }}>{liftDate || 'Select Date'}</Text>
-</TouchableOpacity>
+                <Text style={{ color: 'white' }}>{liftDate || 'Select Date'}</Text>
+              </TouchableOpacity>
 
-{showDatePicker && (
-  <DateTimePicker
-    value={date}
-    mode="date"
-    onChange={(event, selectedDate) => {
-      setShowDatePicker(false);
-      if (selectedDate) {
-        setDate(selectedDate);
-        setLiftDate(selectedDate.toLocaleDateString()); // e.g. "2/28/2026"
-      }
-    }}
-  />
-)}
+              {showDatePicker && (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) {
+                      setDate(selectedDate);
+                      setLiftDate(selectedDate.toLocaleDateString()); // e.g. "2/28/2026"
+                    }
+                  }}
+                />
+              )}
               <TextInput
                 style={styles.input}
                 placeholder="Weight"
