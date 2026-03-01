@@ -1,3 +1,5 @@
+import { toDateKey } from "@/utils/date-utils";
+
 export const QUOTES = [
   '"One must imagine Sisyphus happy."',
   '"The struggle itself toward the heights is enough to fill a man\'s heart."',
@@ -26,7 +28,7 @@ export function getWorkoutsInLastNDays(
   for (let i = 0; i < days; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
-    if (workoutDates.has(d.toISOString().slice(0, 10))) count++;
+    if (workoutDates.has(toDateKey(d))) count++;
   }
   return count;
 }
@@ -38,7 +40,7 @@ export function getCurrentStreak(workoutDates: Set<string>): number {
   for (let i = 0; i < 365; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = toDateKey(d);
     if (workoutDates.has(dateStr)) {
       streak++;
     } else {
@@ -55,10 +57,7 @@ export function getStreakMessage(streak: number): string | null {
   return null;
 }
 
-export function getQuoteForState(
-  state: SisyphusState,
-  streak: number,
-): string {
+export function getQuoteForState(state: SisyphusState, streak: number): string {
   if (state === "slow") {
     return '"The struggle itself toward the heights is enough to fill a man\'s heart."';
   }

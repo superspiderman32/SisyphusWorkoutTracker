@@ -317,7 +317,6 @@ export default function WorkoutTrend() {
                 contentContainerStyle={[
                   styles.chartScrollContent,
                   {
-                    backgroundColor: CHART_COLORS.gradientFrom,
                     minWidth: Math.max(
                       Dimensions.get("window").width - 32,
                       (chartData?.labels.length ?? 0) * 48,
@@ -355,7 +354,6 @@ export default function WorkoutTrend() {
                   }}
                   bezier
                   style={{
-                    marginVertical: 8,
                     borderRadius: 16,
                   }}
                 />

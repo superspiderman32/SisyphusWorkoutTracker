@@ -1,10 +1,12 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import {
   StyleSheet,
   Text,
   View,
   StatusBar,
   ScrollView,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useFocusEffect } from "@react-navigation/native";
@@ -16,6 +18,8 @@ import {
   getStreakMessage,
   getQuoteForState,
 } from "@/constants/quotes";
+import { loadDemoData } from "@/utils/demo-data";
+import { parseEntryDateToKey, toDateKey } from "@/utils/date-utils";
 import type { Lift } from "@/types/exercise";
 
 const CELL_SIZE = 20;
@@ -33,10 +37,8 @@ function getWorkoutDates(lifts: Lift[]): Set<string> {
   const dates = new Set<string>();
   for (const lift of lifts) {
     for (const entry of lift.entries) {
-      const d = new Date(entry.date);
-      if (!isNaN(d.getTime())) {
-        dates.add(d.toISOString().slice(0, 10));
-      }
+      const key = parseEntryDateToKey(entry.date);
+      if (key) dates.add(key);
     }
   }
   return dates;
@@ -69,7 +71,7 @@ function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < WEEKS; col++) {
         const date = getDateForCell(row, col);
-        const dateStr = date.toISOString().slice(0, 10);
+        const dateStr = toDateKey(date);
         const workedOut = workoutDates.has(dateStr);
         cells.push({ row, col, date, workedOut });
       }
@@ -77,7 +79,7 @@ function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
     return cells;
   }, [workoutDates]);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = toDateKey(new Date());
 
   return (
     <View style={styles.gridContainer}>
@@ -87,7 +89,7 @@ function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
       </Text>
       <View style={styles.grid}>
         {grid.map(({ row, col, date, workedOut }) => {
-          const dateStr = date.toISOString().slice(0, 10);
+          const dateStr = toDateKey(date);
           const isToday = dateStr === todayStr;
           const isFuture = date > new Date();
           return (
@@ -119,6 +121,49 @@ function ConsistencyGrid({ workoutDates }: { workoutDates: Set<string> }) {
 
 export default function App() {
   const { lifts, refresh } = useLifts();
+  const tapCount = useRef(0);
+
+  const handleTitlePress = useCallback(() => {
+    tapCount.current += 1;
+    if (tapCount.current >= 5) {
+      tapCount.current = 0;
+      Alert.alert(
+        "Load demo data",
+        "Choose a demo to see different features:",
+        [
+          {
+            text: "Full (all features)",
+            onPress: async () => {
+              await loadDemoData("full");
+              refresh();
+            },
+          },
+          {
+            text: "Slow state (0 workouts)",
+            onPress: async () => {
+              await loadDemoData("slow");
+              refresh();
+            },
+          },
+          {
+            text: "Pushing state (1-2/week)",
+            onPress: async () => {
+              await loadDemoData("pushing");
+              refresh();
+            },
+          },
+          {
+            text: "7-day streak",
+            onPress: async () => {
+              await loadDemoData("streak7");
+              refresh();
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ],
+      );
+    }
+  }, [refresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -133,10 +178,7 @@ export default function App() {
     [workoutDates],
   );
   const streak = useMemo(() => getCurrentStreak(workoutDates), [workoutDates]);
-  const streakMessage = useMemo(
-    () => getStreakMessage(streak),
-    [streak],
-  );
+  const streakMessage = useMemo(() => getStreakMessage(streak), [streak]);
   const quote = useMemo(
     () => getQuoteForState(sisyphusState, streak),
     [sisyphusState, streak],
@@ -150,7 +192,9 @@ export default function App() {
     >
       <StatusBar barStyle="light-content" />
 
-      <Text style={styles.title}>SISUPHYS</Text>
+      <TouchableOpacity onPress={handleTitlePress} activeOpacity={1}>
+        <Text style={styles.title}>SISYPHUS</Text>
+      </TouchableOpacity>
 
       <Image
         source={SISYPHUS_IMAGES[sisyphusState]}
@@ -179,6 +223,7 @@ export default function App() {
         {workoutDaysCount} workout day{workoutDaysCount !== 1 ? "s" : ""} logged
         {streak > 0 && ` · ${streak} day streak`}
       </Text>
+      <Text style={styles.demoHint}>Tap SISUPHYS 5x for demo data</Text>
     </ScrollView>
   );
 }
@@ -289,6 +334,11 @@ const styles = StyleSheet.create({
   sisyphusImage: {
     width: 200,
     height: 160,
+    marginTop: Spacing.lg,
+  },
+  demoHint: {
+    color: AppColors.textDim,
+    fontSize: 11,
     marginTop: Spacing.lg,
   },
 });

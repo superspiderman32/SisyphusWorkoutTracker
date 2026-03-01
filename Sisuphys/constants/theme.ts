@@ -20,7 +20,7 @@ export const AppColors = {
   success: "#4ade80",
   error: "#f87171",
   chartGradientFrom: "rgba(0, 0, 0, 0)",
-  chartGradientTo: "rgb(255, 186, 10)",
+  chartGradientTo: "rgb(255, 196, 0)",
 };
 
 // Consistent spacing

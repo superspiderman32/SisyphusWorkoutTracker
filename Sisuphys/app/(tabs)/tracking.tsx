@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { AppColors, Fonts, Spacing } from '@/constants/theme';
+import { parseEntryDateToKey, toDateKey } from '@/utils/date-utils';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { Entry, Lift } from '@/types/exercise';
 
@@ -157,7 +158,7 @@ export default function TabTwoScreen() {
             <View style={{ marginTop: 10 }}>
               {lift.entries.map((entry, index) => (
                 <View key={index} style={styles.entryRow}>
-                  <ThemedText>{entry.date} — {entry.weight}kg x {entry.reps} reps x {entry.sets} sets</ThemedText>
+                  <ThemedText>{parseEntryDateToKey(entry.date) ?? entry.date} — {entry.weight}kg x {entry.reps} reps x {entry.sets} sets</ThemedText>
                 </View>
               ))}
 
@@ -173,7 +174,7 @@ export default function TabTwoScreen() {
                     setShowDatePicker(false);
                     if (selectedDate) {
                       setDate(selectedDate);
-                      setLiftDate(selectedDate.toLocaleDateString()); // e.g. "2/28/2026"
+                      setLiftDate(toDateKey(selectedDate)); // YYYY-MM-DD for consistency
                     }
                   }}
                 />
